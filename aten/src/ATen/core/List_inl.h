@@ -9,11 +9,11 @@ template<class T> decltype(auto) getTypePtr();
 std::string toString(const Type& type);
 
 template<class T>
-List<T>::List(c10::intrusive_ptr<c10::detail::ListImpl>&& elements)
+TORCH_API List<T>::List(c10::intrusive_ptr<c10::detail::ListImpl>&& elements)
 : impl_(std::move(elements)) {}
 
 template<class T>
-List<T>::List(const c10::intrusive_ptr<c10::detail::ListImpl>& elements)
+TORCH_API List<T>::List(const c10::intrusive_ptr<c10::detail::ListImpl>& elements)
 : impl_(elements) {}
 
 template<class T>
@@ -37,7 +37,7 @@ List<T>::List(ArrayRef<T> values)
 }
 
 template<class T>
-List<T>::List(std::initializer_list<T> initial_values)
+TORCH_API List<T>::List(std::initializer_list<T> initial_values)
 : List(ArrayRef<T>(initial_values)) {
   static_assert(!std::is_same<T, IValue>::value, "This constructor is not valid for List<IValue>. Please use c10::impl::GenericList(elementType).");
 }
@@ -79,7 +79,7 @@ impl::GenericList toList(const List<T>& list) {
 }
 
 template<class T>
-List<T> List<T>::copy() const {
+TORCH_API List<T> List<T>::copy() const {
   return List<T>(impl_->copy());
 }
 
@@ -176,33 +176,33 @@ list_element_to_const_ref<std::optional<std::string>>(const IValue& element) {
 } // namespace impl
 
 template<class T>
-void List<T>::set(size_type pos, const value_type& value) const {
+TORCH_API void List<T>::set(size_type pos, const value_type& value) const {
   impl_->list.at(pos) = c10::detail::ListElementFrom<T>::from(value);
 }
 
 template<class T>
-void List<T>::set(size_type pos, value_type&& value) const {
+TORCH_API void List<T>::set(size_type pos, value_type&& value) const {
   impl_->list.at(pos) = c10::detail::ListElementFrom<T>::from(std::move(value));
 }
 
 template<class T>
-typename List<T>::internal_const_reference_type List<T>::get(size_type pos) const {
+TORCH_API typename List<T>::internal_const_reference_type List<T>::get(size_type pos) const {
   return operator[](pos);
 }
 
 template<class T>
-typename List<T>::internal_const_reference_type List<T>::operator[](size_type pos) const {
+TORCH_API typename List<T>::internal_const_reference_type List<T>::operator[](size_type pos) const {
   return c10::impl::list_element_to_const_ref<T>(impl_->list.at(pos));
 }
 
 template<class T>
-typename List<T>::internal_reference_type List<T>::operator[](size_type pos) {
+TORCH_API typename List<T>::internal_reference_type List<T>::operator[](size_type pos) {
   static_cast<void>(impl_->list.at(pos)); // Throw the exception if it is out of range.
   return {impl_->list.begin() + static_cast<typename decltype(impl_->list)::difference_type>(pos)};
 }
 
 template<class T>
-typename List<T>::value_type List<T>::extract(size_type pos) const {
+TORCH_API typename List<T>::value_type List<T>::extract(size_type pos) const {
   auto& elem = impl_->list.at(pos);
   auto result = c10::detail::list_element_to<T>(std::move(elem));
   // Reset the list element to a T() instead of None to keep it correctly typed
@@ -211,64 +211,64 @@ typename List<T>::value_type List<T>::extract(size_type pos) const {
 }
 
 template<class T>
-typename List<T>::iterator List<T>::begin() const {
+TORCH_API typename List<T>::iterator List<T>::begin() const {
   return iterator(impl_->list.begin());
 }
 
 template<class T>
-typename List<T>::iterator List<T>::end() const {
+TORCH_API typename List<T>::iterator List<T>::end() const {
   return iterator(impl_->list.end());
 }
 
 template<class T>
-bool List<T>::empty() const {
+TORCH_API bool List<T>::empty() const {
   return impl_->list.empty();
 }
 
 template<class T>
-typename List<T>::size_type List<T>::size() const {
+TORCH_API typename List<T>::size_type List<T>::size() const {
   return impl_->list.size();
 }
 
 template<class T>
-void List<T>::reserve(size_type new_cap) const {
+TORCH_API void List<T>::reserve(size_type new_cap) const {
   impl_->list.reserve(new_cap);
 }
 
 template<class T>
-void List<T>::clear() const {
+TORCH_API void List<T>::clear() const {
   impl_->list.clear();
 }
 
 template<class T>
-typename List<T>::iterator List<T>::insert(iterator pos, const T& value) const {
+TORCH_API typename List<T>::iterator List<T>::insert(iterator pos, const T& value) const {
   return iterator { impl_->list.insert(pos.iterator_, c10::detail::ListElementFrom<T>::from(value)) };
 }
 
 template<class T>
-typename List<T>::iterator List<T>::insert(iterator pos, T&& value) const {
+TORCH_API typename List<T>::iterator List<T>::insert(iterator pos, T&& value) const {
   return iterator { impl_->list.insert(pos.iterator_, c10::detail::ListElementFrom<T>::from(std::move(value))) };
 }
 
 template<class T>
 template<class... Args>
-typename List<T>::iterator List<T>::emplace(iterator pos, Args&&... value) const {
+TORCH_API typename List<T>::iterator List<T>::emplace(iterator pos, Args&&... value) const {
   // TODO Use list_element_from?
   return iterator { impl_->list.emplace(pos.iterator_, std::forward<Args>(value)...) };
 }
 
 template<class T>
-void List<T>::push_back(const T& value) const {
+TORCH_API void List<T>::push_back(const T& value) const {
   impl_->list.push_back(c10::detail::ListElementFrom<T>::from(value));
 }
 
 template<class T>
-void List<T>::push_back(T&& value) const {
+TORCH_API void List<T>::push_back(T&& value) const {
   impl_->list.push_back(c10::detail::ListElementFrom<T>::from(std::move(value)));
 }
 
 template<class T>
-void List<T>::append(List<T> b) const {
+TORCH_API void List<T>::append(List<T> b) const {
   if (b.use_count() == 1) {
     impl_->list.insert(impl_->list.end(), make_move_iterator(b.impl_->list.begin()), make_move_iterator(b.impl_->list.end()));
   } else {
@@ -278,38 +278,38 @@ void List<T>::append(List<T> b) const {
 
 template<class T>
 template<class... Args>
-void List<T>::emplace_back(Args&&... args) const {
+TORCH_API void List<T>::emplace_back(Args&&... args) const {
   // TODO Use list_element_from?
   impl_->list.push_back(T(std::forward<Args>(args)...));
 }
 
 template<class T>
-typename List<T>::iterator List<T>::erase(iterator pos) const {
+TORCH_API typename List<T>::iterator List<T>::erase(iterator pos) const {
   return iterator { impl_->list.erase(pos.iterator_) };
 }
 
 template<class T>
-typename List<T>::iterator List<T>::erase(iterator first, iterator last) const {
+TORCH_API typename List<T>::iterator List<T>::erase(iterator first, iterator last) const {
   return iterator { impl_->list.erase(first.iterator_, last.iterator_) };
 }
 
 template<class T>
-void List<T>::pop_back() const {
+TORCH_API void List<T>::pop_back() const {
   impl_->list.pop_back();
 }
 
 template<class T>
-void List<T>::resize(size_type count) const {
+TORCH_API void List<T>::resize(size_type count) const {
   impl_->list.resize(count, T{});
 }
 
 template<class T>
-void List<T>::resize(size_type count, const T& value) const {
+TORCH_API void List<T>::resize(size_type count, const T& value) const {
   impl_->list.resize(count, value);
 }
 
 template<class T>
-bool operator==(const List<T>& lhs, const List<T>& rhs) {
+TORCH_API bool operator==(const List<T>& lhs, const List<T>& rhs) {
   // Lists with the same identity trivially compare equal.
   if (lhs.impl_ == rhs.impl_) {
     return true;
@@ -320,28 +320,28 @@ bool operator==(const List<T>& lhs, const List<T>& rhs) {
 }
 
 template<class T>
-bool operator!=(const List<T>& lhs, const List<T>& rhs) {
+TORCH_API bool operator!=(const List<T>& lhs, const List<T>& rhs) {
   return !(lhs == rhs);
 }
 
 template<class T>
-bool List<T>::is(const List<T>& rhs) const {
+TORCH_API bool List<T>::is(const List<T>& rhs) const {
   return this->impl_ == rhs.impl_;
 }
 
 template<class T>
-std::vector<T> List<T>::vec() const {
+TORCH_API std::vector<T> List<T>::vec() const {
   std::vector<T> result(begin(), end());
   return result;
 }
 
 template<class T>
-size_t List<T>::use_count() const {
+TORCH_API size_t List<T>::use_count() const {
   return impl_.use_count();
 }
 
 template <class T>
-TypePtr List<T>::elementType() const {
+TORCH_API TypePtr List<T>::elementType() const {
   return impl_->elementType;
 }
 

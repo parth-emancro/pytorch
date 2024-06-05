@@ -64,6 +64,14 @@ kind_to_standard_operators = {
 }
 
 
+def is_legal_for_codegen(name):
+    if len(name) == 0:
+        return False
+    if name[0].isdigit():
+        return False
+    return True
+
+
 def get_src_dest_and_cur(node):
     src_ir, dest_ir = node.input().debugName(), node.output().debugName()
     cur_name = node.s("name")
@@ -162,6 +170,7 @@ class TS2FXGraphConverter:
         mod_param_and_buffer_map: Dict[str, Any],
         is_top_level_graph: bool,
         block_to_arguments: Dict[torch._C.Block, Set[str]],
+        renaming_map: Dict[str, str],
     ):
         self.ts_graph = ts_graph
         self.param_names = param_names
@@ -188,6 +197,8 @@ class TS2FXGraphConverter:
         self.is_top_level_graph = is_top_level_graph
 
         self.block_to_arguments = block_to_arguments
+
+        self.renaming_map = renaming_map
 
         # Populate methods for the standard operators.
         for k in kind_to_standard_operators.keys():
@@ -218,6 +229,11 @@ class TS2FXGraphConverter:
 
     def get_fx_value(self, value: torch._C.Value):
         value_name = value.debugName()
+
+        # Traverse down renaming path.
+        while value_name in self.renaming_map:
+            value_name = self.renaming_map[value_name]
+
         if value_name in self.name_to_node:
             input_node = self.name_to_node[value_name]
             return input_node
@@ -521,19 +537,42 @@ class TS2FXGraphConverter:
         predicate = self.get_fx_value(inputs[0])
 
         def _dfs_build_lifted_arguments_for_input(entry):
+            """
+            Bottom-up finding inputs that should be lifted. This is needed
+            for nested sub-blocks when the input is hidden in the nested sub-block.
+            We need a DFS to extrapolate the hidden input arguments.
+            """
             arguments: Set[str] = set()
             for block in entry.blocks():
                 for block_node in block.nodes():
                     for block_node_in in block_node.inputs():
                         if block_node_in.debugName() in self.name_to_node:
                             debug_name = block_node_in.debugName()
+
+                            # The edge case is some variable only has digit e.g., 20, which
+                            # will cause error when it is embedded into a codegen function
+                            # (invalid argument name). We rename if the name is not valid for
+                            # code generation.
+                            if not is_legal_for_codegen(debug_name):
+                                prefix = self.name_to_node[
+                                    debug_name
+                                ].name  # type: ignore[union-attr]
+                                rename_debug_name = f"{prefix}_{debug_name}"
+                                self.renaming_map[
+                                    debug_name
+                                ] = rename_debug_name  # For sub-block tracing.
+                                self.name_to_node[
+                                    rename_debug_name
+                                ] = self.name_to_node[debug_name]
+                                debug_name = rename_debug_name
+
                             arguments.add(debug_name)
                     arguments = arguments.union(
                         _dfs_build_lifted_arguments_for_input(block_node)
                     )
             return arguments
 
-        # # Find inputs.
+        # Find inputs.
         arguments = _dfs_build_lifted_arguments_for_input(node)
 
         # Lift parameters.
@@ -547,7 +586,13 @@ class TS2FXGraphConverter:
         for block in node.blocks():
             # Convert subgraph with always lifting.
             subgraph_converter = TS2FXGraphConverter(
-                block, set(), set(), dict(), False, self.block_to_arguments
+                block,
+                set(),
+                set(),
+                dict(),
+                False,
+                self.block_to_arguments,
+                self.renaming_map,
             )
             subgraph_converter.constant_map = self.constant_map
             subgraph_converter.attribute_map = self.attribute_map
@@ -698,6 +743,7 @@ class TS2EPConverter:
             self.mod_param_and_buffer_map,
             True,
             block_to_arguments,
+            dict(),
         )
         gm = graph_converter.convert()
         ep = self.retrace_as_exported_program(gm, graph_converter.tensor_constants)

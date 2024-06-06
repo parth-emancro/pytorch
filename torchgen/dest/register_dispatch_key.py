@@ -43,6 +43,7 @@ def gen_registration_headers(
     backend_index: BackendIndex,
     per_operator_headers: bool,
     rocm: bool,
+    backend_only: bool = False,
 ) -> List[str]:
     if per_operator_headers:
         headers = ["#include <ATen/ops/as_strided_native.h>"]
@@ -58,6 +59,8 @@ def gen_registration_headers(
             headers.append("#include <ATen/cuda/EmptyTensor.h>")
     elif backend_index.dispatch_key == DispatchKey.MPS:
         headers.append("#include <ATen/mps/EmptyTensor.h>")
+    elif backend_index.dispatch_key == DispatchKey.XPU:
+        headers.append("#include <aten/EmptyTensor.h>")
     elif per_operator_headers:
         headers += [
             "#include <ATen/ops/empty.h>",
@@ -82,6 +85,7 @@ def gen_empty_impl_names(
         DispatchKey.CPU,
         DispatchKey.CUDA,
         DispatchKey.MPS,
+        DispatchKey.XPU,
     ):
         dispatch = str(backend_index.dispatch_key).lower()
         empty_impl = f"at::detail::empty_{dispatch}"
@@ -90,6 +94,7 @@ def gen_empty_impl_names(
         DispatchKey.CompositeExplicitAutogradNonFunctional,
         DispatchKey.QuantizedCPU,
         DispatchKey.QuantizedCUDA,
+        DispatchKey.XPU,
     ):
         empty_impl = "at::empty"
         empty_strided_impl = "at::empty_strided"
@@ -632,6 +637,7 @@ if (C10_UNLIKELY(maybe_proxy.has_value())) {
                 DispatchKey.CPU,
                 DispatchKey.CUDA,
                 DispatchKey.MPS,
+                DispatchKey.XPU,
                 DispatchKey.CompositeExplicitAutogradNonFunctional,
             )
             return f"""{maybe_set_guard_line}

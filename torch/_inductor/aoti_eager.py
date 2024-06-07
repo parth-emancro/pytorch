@@ -44,12 +44,14 @@ def load_aoti_eager_cache(ns: str, op_func_name_with_overload: str, device_type:
                     return []
 
                 for metadata in item["meta_info"]:
-                    assert not metadata[
-                        "is_dynamic"
-                    ], "Only support static shape for now"
-                    if metadata["device_type"] == "cpu":
+                    if "is_dynamic" in metadata and metadata["is_dynamic"]:
+                        raise NotImplementedError("Only support static shape for now")
+                    if "device_type" in metadata and metadata["device_type"] == "cpu":
                         metadata["device_index"] = -1
-                    metadata["dtype"] = getattr(torch, metadata["dtype"].split(".")[-1])
+                    if "dtype" in metadata:
+                        metadata["dtype"] = getattr(
+                            torch, metadata["dtype"].split(".")[-1]
+                        )
 
             return json_data
 
@@ -60,8 +62,7 @@ def supported_builtin_dtype_torch_dtype():
 
 def supported_scalar_types():
     type_to_torch_dtype = supported_builtin_dtype_torch_dtype()
-    supported_scalar_types = tuple(type_to_torch_dtype.keys())
-    return supported_scalar_types
+    return tuple(type_to_torch_dtype.keys())
 
 
 def extract_tensor_metadata(dynamic: bool, input: torch.Tensor) -> Dict[str, Any]:
@@ -111,6 +112,13 @@ def extract_scalar_metadata(
     return metadata
 
 
+def extract_string_metadata(input: str):
+    assert isinstance(input, str)
+    metadata: Dict[str, Any] = {}
+    metadata["string_value"] = input
+    return metadata
+
+
 def aoti_compile_with_persistent_cache(
     ns: str,
     op_func_name_with_overload: str,
@@ -129,11 +137,9 @@ def aoti_compile_with_persistent_cache(
     Compile the given function with persistent cache for AOTI eager mode.
     """
     assert not dynamic, "Only support static shape for now"
-    type_to_torch_dtype = {int: torch.int32, float: torch.float, bool: torch.bool}
-    supported_scalar_types = tuple(type_to_torch_dtype.keys())
     flattened_inputs = list(args) + list(kwargs.values())
     if not all(
-        isinstance(input, (supported_scalar_types, torch.Tensor, list))
+        isinstance(input, (supported_scalar_types(), torch.Tensor, list, str))
         for input in flattened_inputs
     ):
         raise NotImplementedError(
@@ -182,8 +188,12 @@ def aoti_compile_with_persistent_cache(
                 elif isinstance(input, list):
                     assert all(isinstance(item, torch.Tensor) for item in input)
                     metadata = extract_tensor_list_metadata(dynamic, input)
-                else:
+                elif isinstance(input, supported_scalar_types()):
                     metadata = extract_scalar_metadata(device_type, input)
+                elif isinstance(input, str):
+                    metadata = extract_string_metadata(input)
+                else:
+                    raise NotImplementedError(f"Unsupported input type: {type(input)}")
 
                 metadata["arg_order"] = idx
                 kernel_metadata_items.append(metadata)

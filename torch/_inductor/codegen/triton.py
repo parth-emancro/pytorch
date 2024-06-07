@@ -871,8 +871,29 @@ class TritonKernelOverrides(TritonOverrides):
 
     @staticmethod
     def masked(mask, body, other):
-        with V.kernel.mask_loads(mask) as new_mask:
+        handler = V.get_ops_handler()
+        found_non_load = False
+        load_count = 0
+
+        class FindLoad:
+            def __getattr__(self, name: str) -> Callable[..., CSEVariable]:
+                def inner(*args, **kwargs):
+                    nonlocal found_non_load, load_count
+                    if name != "load":
+                        found_non_load = True
+                    else:
+                        load_count += 1
+                    return getattr(handler, name)(*args, **kwargs)
+
+                return inner
+
+        with V.kernel.mask_loads(mask, value=other) as new_mask, V.set_ops_handler(
+            FindLoad()
+        ):
             result = body()
+
+        if not found_non_load and load_count == 1:
+            return result
 
         # Remove once CSEVariables track the dtype
         if result.bounds.is_bool:
@@ -1291,7 +1312,10 @@ class TritonKernel(SIMDKernel):
                 ep = ", eviction_policy='evict_first'"
         else:
             ep = ""
-        if (has_tmpmask or has_rindex) and indexing.has_mask():
+
+        if self._other_val:
+            other = f", other={self._other_val}"
+        elif (has_tmpmask or has_rindex) and indexing.has_mask():
             other = ", other=0.0"
         else:
             other = ""
@@ -1709,6 +1733,7 @@ class TritonKernel(SIMDKernel):
                         helper,
                         getattr(overrides, name)(*args, **kwargs),
                     )
+                    return self.inner(*args, **kwargs)
 
                 return inner
 

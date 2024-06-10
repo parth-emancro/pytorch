@@ -406,44 +406,37 @@ inductor_override_kwargs = {
 }
 
 
-# Always test with all sample for following ops
-inductor_all_samples = {
-    "arange",
-    "diagonal",
-    "diagonal_copy",
-    "diagonal_scatter",
-    "softmax.with_dtype",
-    "index_add",
-    "index_copy",
-    "index_reduce.prod",
-    "index_reduce.mean",
-    "index_reduce.amax",
-    "index_reduce.amin",
-    "scatter_reduce.sum",
-    "select_scatter",
-    "squeeze",
-    "unfold",
-    "unsqueeze",
-    "sum",
-    "amax",
-    "amin",
-    "all",
-    "T",
-    "H",
-    "isinf",
-    "isposinf",
-    "isneginf",
-    "nan_to_num",
-    "mT",
-    "mH",
-    "rsub",
-    "triu",
-    "cummax",
-    "cummin",
-    "nextafter",
-    "gather",
-    "_chunk_cat",
-    "constant_pad_nd",
+# Test with one sample only for following ops
+inductor_one_sample = {
+    "_segment_reduce.lengths": {f16},
+    "_segment_reduce.offsets": {f16},
+    "addmv": {f16},
+    "argsort": {b8, f16, f32, f64, i32, i64},
+    "as_strided.partial_views": {f16},
+    "clamp_max": {b8},
+    "clamp_min": {b8},
+    "corrcoef": {f16},
+    "diff": {f16},
+    "einsum": {f16},
+    "gradient": {f16},
+    "histogram": {f32, f64},
+    "histogramdd": {f32, f64},
+    "index_put": {f16, f32, f64},
+    "linalg.eig": {f32, f64},
+    "linspace": {f16},
+    "linspace.tensor_overload": {f16, f32, f64, i32, i64},
+    "logspace": {f16},
+    "logspace.tensor_overload": {f16, f32, f64, i32, i64},
+    "masked_logsumexp": {i64},
+    "max.binary": {b8},
+    "max_pool2d_with_indices_backward": {f16, f32, f64},
+    "maximum": {b8},
+    "min.binary": {b8},
+    "minimum": {b8},
+    "put": {f16, f32, f64},
+    "rot90": {b8, f16, f32, f64, i32, i64},
+    "scatter": {b8, i64},
+    "take": {b8, f16, f32, f64, i32, i64},
 }
 
 
@@ -557,7 +550,7 @@ class TestInductorOpInfo(TestCase):
         )
         samples = op.sample_inputs(device, dtype, requires_grad=requires_grad)
 
-        if op_name not in inductor_all_samples and not ALL_SAMPLES:
+        if dtype in inductor_one_sample.get(op_name, {}) and not ALL_SAMPLES:
             if isinstance(samples, (list, tuple)):
                 samples = [samples[0]]
             else:

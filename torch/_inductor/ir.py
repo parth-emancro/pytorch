@@ -3341,6 +3341,7 @@ class ComputedBuffer(Buffer):
                 self.get_store_function(),
                 (args if self.get_reduction_type() else args[:1]),
                 var_ranges,
+                *args,
             )
         index_vars = []
         reduce_vars: List[Any] = []
@@ -3415,22 +3416,23 @@ class ComputedBuffer(Buffer):
             *body.writes_name2expr.values(),
         ]
 
-        def simplify_and_reorder(x_vars, support_vars, sizes):
+        def simplify_and_reorder(x_vars, support_vars, sizes, simplify_loops=True):
             sizes, reindex0, reindex1 = self._apply_loop_reordering(
                 x_vars, support_vars, sizes, memory_addrs
             )
             # for NHWC: reindex0([0,1,2,3]) = [0,2,3,1], reindex1([0,1,2,3]) = [0,3,2,1]
             x_vars = reindex0(x_vars)
-            sizes, reindex2, prune = V.graph.sizevars._simplify_loops(
-                x_vars,
-                sizes,
-                index_prevent_reordering(index_formulas, x_vars, sizes),
-            )
-            x_vars = prune(x_vars)
-            # sizes, reindex1, prune = _simplify_loops(x_vars, sizes, index_formulas)
-            # x_vars = prune(x_vars)
-            # sizes, reindex2 = self._apply_loop_reordering(x_vars, sizes, memory_addrs)
-            reindex = fuse_reindexing(reindex1, reindex2)
+
+            if simplify_loops:
+                sizes, reindex2, prune = V.graph.sizevars._simplify_loops(
+                    x_vars,
+                    sizes,
+                    index_prevent_reordering(index_formulas, x_vars, sizes),
+                )
+                x_vars = prune(x_vars)
+                reindex = fuse_reindexing(reindex1, reindex2)
+            else:
+                reindex = reindex1
             return sizes, reindex, reindex1
 
         support_vars = index_vars + reduce_vars
@@ -3438,6 +3440,7 @@ class ComputedBuffer(Buffer):
             index_vars,
             support_vars,
             index_size,
+            self.get_device().type == "cpu" or not config.loop_ordering_after_fusion,
         )
         reduce_ranges, reduce_reindex, _ = simplify_and_reorder(
             reduce_vars, support_vars, reduce_size
@@ -3445,10 +3448,14 @@ class ComputedBuffer(Buffer):
 
         # retrace the loop body with simplification and reordering applied
         (iter_vars, reduce_vars), var_ranges = dependencies.index_vars_no_squeeze(
-            iter_ranges, reduce_ranges, prefix="z"
+            iter_ranges, reduce_ranges, prefix="y"
         )
         body = LoopBody(
-            body, [iter_reindex(iter_vars), reduce_reindex(reduce_vars)], var_ranges
+            body,
+            [iter_reindex(iter_vars), reduce_reindex(reduce_vars)],
+            var_ranges,
+            iter_vars,
+            reduce_vars,
         )
         return (iter_ranges, reduce_ranges), body
 
@@ -7948,9 +7955,13 @@ class LoopBody:
     indexing simplifications and makes it easier to analyze loop bodies.
     """
 
-    def __init__(self, fn, args, var_ranges):
+    def __init__(self, fn, args, var_ranges, iter_vars, reduce_vars):
         super().__init__()
+
+        self.iter_vars = iter_vars
+        self.reduce_vars = reduce_vars
         self.var_ranges = var_ranges
+
         self.indexing_exprs = {}
         self.indexing_exprs_name = {}
         self.reads = []
@@ -7963,6 +7974,12 @@ class LoopBody:
         self.indirect_vars = []
         self.root_block = LoopBodyBlock(self, fn, args)
         self.indexing = None
+
+    @property
+    def vars(self):
+        assert self.iter_vars is not None
+        assert self.reduce_vars is not None
+        return self.iter_vars, self.reduce_vars
 
     @cache_on_self
     def get_nodes(self):

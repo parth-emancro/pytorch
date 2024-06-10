@@ -488,7 +488,10 @@ def should_pad_bench(
         # Shape padding introduces additional memory ops. Based on microbenchmarks, 1.1x represents a reasonable
         # tradeoff between performance improvement from shape padding and overhead from additional memory ops
         # TODO: Build a learned model which would be better than this heuristic
-        should_pad = _skip_do_bench_times or ori_time > pad_time * 1.1
+        should_pad = (
+            _skip_do_bench_times
+            or ori_time > pad_time * torch._inductor.config.shape_padding_multiplier
+        )
         set_cached_should_pad(key, should_pad)
         return should_pad
 

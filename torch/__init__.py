@@ -178,6 +178,8 @@ def _load_global_deps() -> None:
         # Can only happen for wheel with cuda libs as PYPI deps
         # As PyTorch is not purelib, but nvidia-*-cu12 is
         cuda_libs: Dict[str, str] = {
+            'libnvjitlink': 'libnvJitLink.so.*[0-9]',
+            'cusparse': 'libcusparse.so.*[0-9]',
             'cublas': 'libcublas.so.*[0-9]',
             'cudnn': 'libcudnn.so.*[0-9]',
             'cuda_nvrtc': 'libnvrtc.so.*[0-9]',
@@ -186,7 +188,6 @@ def _load_global_deps() -> None:
             'cufft': 'libcufft.so.*[0-9]',
             'curand': 'libcurand.so.*[0-9]',
             'cusolver': 'libcusolver.so.*[0-9]',
-            'cusparse': 'libcusparse.so.*[0-9]',
             'nccl': 'libnccl.so.*[0-9]',
             'nvtx': 'libnvToolsExt.so.*[0-9]',
         }
